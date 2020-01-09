@@ -1,38 +1,31 @@
-# VC0706 image capture to SD card demo.
-# You must wire up the VC0706 to the board's serial port, and a SD card holder
-# to the board's SPI bus.  Use the Feather M0 Adalogger as it includes a SD
-# card holder pre-wired to the board--this sketch is setup to use the Adalogger!
-# In addition you MUST also install the following dependent SD card library:
-#   https://github.com/adafruit/Adafruit_CircuitPython_SD
-# See the guide here for more details on using SD cards with CircuitPython:
-#   https://learn.adafruit.com/micropython-hardware-sd-cards
+"""VC0706 image capture to local storage.
+You must wire up the VC0706 to a USB or hardware serial port.
+Primarily for use with Linux/Raspberry Pi but also can work with Mac/Windows"""
+
 import time
-
-import board
 import busio
-import digitalio
-import storage
-
-import adafruit_sdcard
+import board
 import adafruit_vc0706
 
+# Set this to the full path to the file name to save the captured image. WILL OVERWRITE!
+# CircuitPython internal filesystem configuration:
+IMAGE_FILE = '/image.jpg'
+# USB to serial adapter configuration:
+# IMAGE_FILE = 'image.jpg'  # Full path to file name to save captured image. Will overwrite!
+# Raspberry Pi configuration:
+# IMAGE_FILE = '/home/pi/image.jpg'  # Full path to file name to save image. Will overwrite!
 
-# Configuration:
-SD_CS_PIN = board.D10  # CS for SD card (SD_CS is for Feather Adalogger)
-IMAGE_FILE = '/sd/image.jpg'  # Full path to file name to save captured image.
-                              # Will overwrite!
 
-# Setup SPI bus (hardware SPI).
-spi = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
+# Create a serial connection for the VC0706 connection.
+uart = busio.UART(board.TX, board.RX, baudrate=115200, timeout=0.25)
+# Update the serial port name to match the serial connection for the camera!
+# For use with USB to serial adapter:
+# import serial
+# uart = serial.Serial("/dev/ttyUSB0", baudrate=115200, timeout=0.25)
+# For use with Raspberry Pi:
+# import serial
+# uart = serial.Serial("/dev/ttyS0", baudrate=115200, timeout=0.25)
 
-# Setup SD card and mount it in the filesystem.
-sd_cs = digitalio.DigitalInOut(SD_CS_PIN)
-sdcard = adafruit_sdcard.SDCard(spi, sd_cs)
-vfs = storage.VfsFat(sdcard)
-storage.mount(vfs, '/sd')
-
-# Create a serial connection for the VC0706 connection, speed is auto-detected.
-uart = busio.UART(board.TX, board.RX, timeout=250)
 # Setup VC0706 camera
 vc0706 = adafruit_vc0706.VC0706(uart)
 
@@ -40,12 +33,10 @@ vc0706 = adafruit_vc0706.VC0706(uart)
 print('VC0706 version:')
 print(vc0706.version)
 
-# Set the baud rate to 115200 for fastest transfer (its the max speed)
-vc0706.baudrate = 115200
-
 # Set the image size.
-vc0706.image_size = adafruit_vc0706.IMAGE_SIZE_640x480 # Or set IMAGE_SIZE_320x240 or
-                                                       # IMAGE_SIZE_160x120
+vc0706.image_size = adafruit_vc0706.IMAGE_SIZE_640x480
+# Or set IMAGE_SIZE_320x240 or IMAGE_SIZE_160x120
+
 # Note you can also read the property and compare against those values to
 # see the current size:
 size = vc0706.image_size
@@ -70,10 +61,12 @@ print('Picture size (bytes): {}'.format(frame_length))
 # Open a file for writing (overwriting it if necessary).
 # This will write 50 bytes at a time using a small buffer.
 # You MUST keep the buffer size under 100!
-print('Writing image: {}'.format(IMAGE_FILE), end='')
+print('Writing image: {}'.format(IMAGE_FILE), end='', flush=True)
+stamp = time.monotonic()
 with open(IMAGE_FILE, 'wb') as outfile:
     wcount = 0
     while frame_length > 0:
+        t = time.monotonic()
         # Compute how much data is left to read as the lesser of remaining bytes
         # or the copy buffer size (32 bytes at a time).  Buffer size MUST be
         # a multiple of 4 and under 100.  Stick with 32!
@@ -88,7 +81,7 @@ with open(IMAGE_FILE, 'wb') as outfile:
         # Print a dot every 2k bytes to show progress.
         wcount += 1
         if wcount >= 64:
-            print('.', end='')
+            print('.', end='', flush=True)
             wcount = 0
 print()
-print('Finished!')
+print('Finished in %0.1f seconds!' % (time.monotonic() - stamp))
